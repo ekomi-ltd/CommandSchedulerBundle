@@ -211,23 +211,30 @@ class ExecuteCommand extends ContainerAwareCommand
             $result = -1;
         }
 
-        if (false === $this->em->isOpen()) {
-            $output->writeln('<comment>Entity manager closed by the last command.</comment>');
-            $this->em = $this->em->create($this->em->getConnection(), $this->em->getConfiguration());
+        try {
+            if (false === $this->em->isOpen()) {
+                $output->writeln('<comment>Entity manager closed by the last command.</comment>');
+                $this->em = $this->em->create($this->em->getConnection(), $this->em->getConfiguration());
+            }
+            $scheduledCommand = $this->em->merge($scheduledCommand);
+            $scheduledCommand->setLastReturnCode($result);
+            $scheduledCommand->setLocked(false);
+            $scheduledCommand->setExecuteImmediately(false);
+            $this->em->flush();
+            /*
+             * This clear() is necessary to avoid conflict between commands and to be sure that none entity are managed
+             * before entering in a new command
+             */
+            $this->em->clear();
+        } catch (\Exception $exception) {
+            if ($this->getContainer()->has('bugsnag')) {
+                $this->getContainer()->get('bugsnag')->notifyException(
+                    new \RuntimeException("Command scheduler unable to run the command properly")
+                );
+            }
+            $this->em->flush();
+            $this->em->clear();
         }
-
-        $scheduledCommand = $this->em->merge($scheduledCommand);
-        $scheduledCommand->setLastReturnCode($result);
-        $scheduledCommand->setLocked(false);
-        $scheduledCommand->setExecuteImmediately(false);
-        $this->em->flush();
-
-        /*
-         * This clear() is necessary to avoid conflict between commands and to be sure that none entity are managed
-         * before entering in a new command
-         */
-        $this->em->clear();
-
         unset($command);
         gc_collect_cycles();
     }
