@@ -220,6 +220,7 @@ class ExecuteCommand extends ContainerAwareCommand
             $scheduledCommand->setLastReturnCode($result);
             $scheduledCommand->setLocked(false);
             $scheduledCommand->setExecuteImmediately(false);
+            throw new OptimisticLockException('aslfkhaslkfjashflkjafhasklfjahlkfasf', $scheduledCommand);
             $this->em->flush();
             /*
              * This clear() is necessary to avoid conflict between commands and to be sure that none entity are managed
