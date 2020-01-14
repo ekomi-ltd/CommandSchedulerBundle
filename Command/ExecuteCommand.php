@@ -2,7 +2,9 @@
 
 namespace JMose\CommandSchedulerBundle\Command;
 
+use Bugsnag\Client;
 use Cron\CronExpression;
+use Doctrine\ORM\OptimisticLockException;
 use Symfony\Bridge\Doctrine\ManagerRegistry;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\StringInput;
@@ -43,15 +45,22 @@ class ExecuteCommand extends Command
     private $commandsVerbosity;
 
     /**
+     * @var Client
+     */
+    private $bugsnag;
+
+    /**
      * ExecuteCommand constructor.
      * @param ManagerRegistry $managerRegistry
      * @param $managerName
      * @param $logPath
+     * @param $bugsnag
      */
-    public function __construct(ManagerRegistry $managerRegistry, $managerName, $logPath)
+    public function __construct(ManagerRegistry $managerRegistry, $managerName, $logPath, $bugsnag)
     {
         $this->em = $managerRegistry->getManager($managerName);
         $this->logPath = $logPath;
+        $this->bugsnag = $bugsnag;
 
         // If logpath is not set to false, append the directory separator to it
         if (false !== $this->logPath) {
@@ -240,22 +249,30 @@ class ExecuteCommand extends Command
             $result = -1;
         }
 
-        if (false === $this->em->isOpen()) {
-            $output->writeln('<comment>Entity manager closed by the last command.</comment>');
-            $this->em = $this->em->create($this->em->getConnection(), $this->em->getConfiguration());
+        try {
+            if (false === $this->em->isOpen()) {
+                $output->writeln('<comment>Entity manager closed by the last command.</comment>');
+                $this->em = $this->em->create($this->em->getConnection(), $this->em->getConfiguration());
+            }
+
+            $scheduledCommand = $this->em->merge($scheduledCommand);
+            $scheduledCommand->setLastReturnCode($result);
+            $scheduledCommand->setLocked(false);
+            $scheduledCommand->setExecuteImmediately(false);
+
+            $this->em->flush();
+            /*
+             * This clear() is necessary to avoid conflict between commands and to be sure that none entity are managed
+             * before entering in a new command
+             */
+            $this->em->clear();
+        } catch (\Exception $exception) {
+            $this->bugsnag->notifyException(
+                new \RuntimeException("Testing Exception of bugsnag, Please ignore.")
+            );
+            $this->em->flush();
+            $this->em->clear();
         }
-
-        $scheduledCommand = $this->em->merge($scheduledCommand);
-        $scheduledCommand->setLastReturnCode($result);
-        $scheduledCommand->setLocked(false);
-        $scheduledCommand->setExecuteImmediately(false);
-        $this->em->flush();
-
-        /*
-         * This clear() is necessary to avoid conflict between commands and to be sure that none entity are managed
-         * before entering in a new command
-         */
-        $this->em->clear();
 
         unset($command);
         gc_collect_cycles();

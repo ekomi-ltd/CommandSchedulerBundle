@@ -32,6 +32,7 @@ services:
             - "@doctrine"
             - "%jmose_command_scheduler.doctrine_manager%"
             - "%jmose_command_scheduler.log_path%"
+            - "@bugsnag"
         tags: [console.command]
 
     JMose\CommandSchedulerBundle\Command\MonitorCommand:
