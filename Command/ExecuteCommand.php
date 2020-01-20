@@ -229,7 +229,15 @@ class ExecuteCommand extends ContainerAwareCommand
         } catch (\Exception $exception) {
             if ($this->getContainer()->has('bugsnag')) {
                 $this->getContainer()->get('bugsnag')->notifyException(
-                    new \RuntimeException("Command scheduler unable to run the command properly")
+                    $exception,
+                    function ($report) use ($scheduledCommand) {
+                        $report->setMetaData([
+                            'Meta Data' => [
+                                'Message' => 'Command scheduler unable to unlock the command properly.',
+                                'Command' => $scheduledCommand->getName()
+                            ]
+                        ]);
+                    }
                 );
             }
             $this->em->flush();
